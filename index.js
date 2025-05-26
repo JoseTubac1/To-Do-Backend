@@ -1,66 +1,95 @@
 const express = require('express');
+const pool = require('./db');
+require('dotenv').config();
+
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 
-const API_KEY = '123@';
-
 app.use((req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader !== API_KEY) {
+  if (req.headers.authorization !== process.env.API_KEY) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
   next();
 });
 
-let tasks = [];
-let goals = [];
-
-app.get('/getTasks', (req, res) => {
-  res.status(200).json(tasks);
-});
-
-app.get('/getGoals', (req, res) => {
-  res.status(200).json(goals);
-});
-
-app.post('/addTask', (req, res) => {
-  const task = req.body;
-  if (!task || !task.name || !task.description || !task.dueDate) {
-    return res.status(400).json({ message: 'Bad Request: Invalid task data' });
+app.get('/getTasks', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM tasks');
+    res.status(200).json(rows);
+  } catch {
+    res.sendStatus(500);
   }
-  tasks.push(task);
-  res.status(200).json({ message: 'Task added', task });
 });
 
-app.post('/addGoal', (req, res) => {
-  const goal = req.body;
-  if (!goal || !goal.name || !goal.description || !goal.dueDate) {
-    return res.status(400).json({ message: 'Bad Request: Invalid goal data' });
+app.get('/getGoals', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM goals');
+    res.status(200).json(rows);
+  } catch {
+    res.sendStatus(500);
   }
-  goals.push(goal);
-  res.status(200).json({ message: 'Goal added', goal });
 });
 
-app.delete('/removeTask', (req, res) => {
-  const { index } = req.body;
-  if (index === undefined || index < 0 || index >= tasks.length) {
-    return res.status(400).json({ message: 'Bad Request: Invalid task index' });
+app.post('/addTask', async (req, res) => {
+  const { name, description, dueDate } = req.body;
+  if (!name || !description || !dueDate) {
+    return res.status(400).json({ message: 'Bad Request' });
   }
-  const removed = tasks.splice(index, 1);
-  res.status(200).json({ message: 'Task removed', removed });
-});
-
-app.delete('/removeGoal', (req, res) => {
-  const { index } = req.body;
-  if (index === undefined || index < 0 || index >= goals.length) {
-    return res.status(400).json({ message: 'Bad Request: Invalid goal index' });
+  try {
+    const [result] = await pool.query('INSERT INTO tasks (name, description, dueDate) VALUES (?, ?, ?)', [name, description, dueDate]);
+    res.status(200).json({ id: result.insertId });
+  } catch {
+    res.sendStatus(500);
   }
-  const removed = goals.splice(index, 1);
-  res.status(200).json({ message: 'Goal removed', removed });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+app.post('/addGoal', async (req, res) => {
+  const { name, description, dueDate } = req.body;
+  if (!name || !description || !dueDate) {
+    return res.status(400).json({ message: 'Bad Request' });
+  }
+  try {
+    const [result] = await pool.query('INSERT INTO goals (name, description, dueDate) VALUES (?, ?, ?)', [name, description, dueDate]);
+    res.status(200).json({ id: result.insertId });
+  } catch {
+    res.sendStatus(500);
+  }
+});
+
+app.delete('/removeTask', async (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ message: 'Bad Request' });
+  }
+  try {
+    const [result] = await pool.query('DELETE FROM tasks WHERE id = ?', [id]);
+    res.status(200).json({ deleted: result.affectedRows });
+  } catch {
+    res.sendStatus(500);
+  }
+});
+
+app.delete('/removeGoal', async (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ message: 'Bad Request' });
+  }
+  try {
+    const [result] = await pool.query('DELETE FROM goals WHERE id = ?', [id]);
+    res.status(200).json({ deleted: result.affectedRows });
+  } catch {
+    res.sendStatus(500);
+  }
+});
+
+app.listen(PORT, async () => {
+  try {
+    await pool.getConnection();
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  } catch {
+    console.error('Error al conectar con la base de datos');
+    process.exit(1);
+  }
 });
